@@ -1,0 +1,11 @@
+[Unit]
+Description=Gateway failover service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/gw-failover
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
