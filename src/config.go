@@ -24,6 +24,7 @@ type ConfigType struct {
 	ReplyTimeout        time.Duration `yaml:"reply_timeout"`
 	DryRun              bool          `yaml:"dry_run"`
 	Ipv6                bool          `yaml:"ipv6"`
+	MetricsServer       string        `yaml:"metrics_server"`
 }
 
 var Config = ConfigType{
@@ -34,6 +35,7 @@ var Config = ConfigType{
 	ReplyTimeout:        5 * time.Second,
 	DryRun:              false,
 	Ipv6:                false,
+	MetricsServer:       ":9429",
 }
 
 func (c *ConfigType) Load() error {

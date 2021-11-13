@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	ping "github.com/go-ping/ping"
+	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -31,10 +32,11 @@ func (r *DefaultRoute) StartPinging() error {
 		pinger.Source = r.Source
 		pinger.OnSend = func(packet *ping.Packet) {
 			r.counter.AddRequest()
+			r.IncPromMetric(coll.ping_requests_total)
 		}
 		pinger.OnRecv = func(packet *ping.Packet) {
 			r.counter.AddReply()
-			// log.Infof("%s: ping reply", r.Name())
+			r.IncPromMetric(coll.ping_replies_total)
 		}
 		r.pinger = pinger
 		r.counter = NewPingCounter(Config.ActivateThreshold)
@@ -56,6 +58,7 @@ func (r *DefaultRoute) Check() bool {
 		return false
 	}
 	stats := r.counter.Stats(Config.ReplyTimeout)
+	r.SetPromMetricBool(coll.route_up, stats.upTime > 0)
 	if Config.DryRun {
 		log.Infof(
 			"%s: since last reply %v, down time %v, up time %v",
@@ -76,21 +79,26 @@ func (r *DefaultRoute) Check() bool {
 }
 
 func (r *DefaultRoute) activate() {
-	r.Active = true
 	err := r.applyMetric(r.Metric)
 	if err != nil {
 		log.Error(err)
+		return
 	}
+
+	r.Active = true
+	r.UpdatePromMetrics()
 }
 
 func (r *DefaultRoute) deactivate() {
-	r.Active = false
 	err := r.applyMetric(r.Metric + Config.InactiveRouteMetric)
 	if err != nil {
 		log.Error(err)
 		return
 	}
+
 	r.resetConnections()
+	r.Active = false
+	r.UpdatePromMetrics()
 }
 
 func (r *DefaultRoute) applyMetric(metric int) error {
@@ -120,4 +128,32 @@ func (r *DefaultRoute) resetConnections() {
 
 func (r *DefaultRoute) Name() string {
 	return fmt.Sprintf("%s@%s", r.Gateway, r.Interface)
+}
+
+func (r *DefaultRoute) InitPromMetrics() {
+	r.SetPromMetricBool(coll.route_up, true)
+	r.SetPromMetric(coll.ping_requests_total, 0)
+	r.SetPromMetric(coll.ping_replies_total, 0)
+	r.UpdatePromMetrics()
+}
+
+func (r *DefaultRoute) UpdatePromMetrics() {
+	r.SetPromMetricBool(coll.route_active, r.Active)
+	r.SetPromMetric(coll.route_metric, float64(r.Metric))
+}
+
+func (r *DefaultRoute) SetPromMetric(vec *prometheus.GaugeVec, value float64) {
+	vec.With(prometheus.Labels{"gateway": r.Gateway, "interface": r.Interface}).Set(value)
+}
+
+func (r *DefaultRoute) IncPromMetric(vec *prometheus.GaugeVec) {
+	vec.With(prometheus.Labels{"gateway": r.Gateway, "interface": r.Interface}).Inc()
+}
+
+func (r *DefaultRoute) SetPromMetricBool(vec *prometheus.GaugeVec, value bool) {
+	if value {
+		r.SetPromMetric(vec, 1)
+	} else {
+		r.SetPromMetric(vec, 0)
+	}
 }

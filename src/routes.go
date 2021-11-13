@@ -122,6 +122,7 @@ func (rs *DefaultRoutes) read(ipv6 bool) error {
 				t.Source = source.String()
 			}
 		}
+		t.InitPromMetrics()
 		result = append(result, &t)
 		c++
 	}
