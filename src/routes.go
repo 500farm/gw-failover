@@ -123,6 +123,7 @@ func (rs *DefaultRoutes) read(ipv6 bool) error {
 			}
 		}
 		t.InitPromMetrics()
+		t.UpdateExternalIp()
 		result = append(result, &t)
 		c++
 	}

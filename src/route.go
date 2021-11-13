@@ -1,9 +1,15 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io/ioutil"
+	"net"
+	"net/http"
 	"os/exec"
 	"strconv"
+	"strings"
+	"time"
 
 	ping "github.com/go-ping/ping"
 	"github.com/prometheus/client_golang/prometheus"
@@ -16,6 +22,7 @@ type DefaultRoute struct {
 	Source    string
 	Active    bool
 	Metric    int
+	External  string
 	pinger    *ping.Pinger
 	counter   *PingCounter
 }
@@ -32,12 +39,12 @@ func (r *DefaultRoute) StartPinging() error {
 		pinger.Source = r.Source
 		pinger.OnSend = func(packet *ping.Packet) {
 			r.counter.AddRequest()
-			r.IncPromMetric(coll.ping_requests_total)
+			r.incPromMetric(coll.ping_requests_total)
 		}
 		pinger.OnRecv = func(packet *ping.Packet) {
 			r.counter.AddReply()
-			r.IncPromMetric(coll.ping_replies_total)
-			r.AddToPromMetric(coll.ping_rtt_total_seconds, packet.Rtt.Seconds())
+			r.incPromMetric(coll.ping_replies_total)
+			r.addToPromMetric(coll.ping_rtt_total_seconds, packet.Rtt.Seconds())
 		}
 		r.pinger = pinger
 		r.counter = NewPingCounter(Config.ActivateThreshold)
@@ -59,7 +66,7 @@ func (r *DefaultRoute) Check() bool {
 		return false
 	}
 	stats := r.counter.Stats(Config.ReplyTimeout)
-	r.SetPromMetricBool(coll.route_up, stats.upTime > 0)
+	r.setPromMetricBool(coll.route_up, stats.upTime > 0)
 	if Config.DryRun {
 		log.Infof(
 			"%s: since last reply %v, down time %v, up time %v",
@@ -87,7 +94,7 @@ func (r *DefaultRoute) activate() {
 	}
 
 	r.Active = true
-	r.UpdatePromMetrics()
+	r.updatePromMetrics()
 }
 
 func (r *DefaultRoute) deactivate() {
@@ -99,7 +106,7 @@ func (r *DefaultRoute) deactivate() {
 
 	r.resetConnections()
 	r.Active = false
-	r.UpdatePromMetrics()
+	r.updatePromMetrics()
 }
 
 func (r *DefaultRoute) applyMetric(metric int) error {
@@ -132,34 +139,75 @@ func (r *DefaultRoute) Name() string {
 }
 
 func (r *DefaultRoute) InitPromMetrics() {
-	r.SetPromMetricBool(coll.route_up, true)
-	r.SetPromMetric(coll.ping_requests_total, 0)
-	r.SetPromMetric(coll.ping_replies_total, 0)
-	r.SetPromMetric(coll.ping_rtt_total_seconds, 0)
-	r.UpdatePromMetrics()
+	r.setPromMetricBool(coll.route_up, true)
+	r.setPromMetric(coll.ping_requests_total, 0)
+	r.setPromMetric(coll.ping_replies_total, 0)
+	r.setPromMetric(coll.ping_rtt_total_seconds, 0)
+	r.updatePromMetrics()
 }
 
-func (r *DefaultRoute) UpdatePromMetrics() {
-	r.SetPromMetricBool(coll.route_active, r.Active)
-	r.SetPromMetric(coll.route_metric, float64(r.Metric))
+func (r *DefaultRoute) updatePromMetrics() {
+	r.setPromMetricBool(coll.route_active, r.Active)
+	r.setPromMetric(coll.route_metric, float64(r.Metric))
 }
 
-func (r *DefaultRoute) SetPromMetric(vec *prometheus.GaugeVec, value float64) {
+func (r *DefaultRoute) setPromMetric(vec *prometheus.GaugeVec, value float64) {
 	vec.With(prometheus.Labels{"gateway": r.Gateway, "interface": r.Interface}).Set(value)
 }
 
-func (r *DefaultRoute) AddToPromMetric(vec *prometheus.GaugeVec, value float64) {
+func (r *DefaultRoute) addToPromMetric(vec *prometheus.GaugeVec, value float64) {
 	vec.With(prometheus.Labels{"gateway": r.Gateway, "interface": r.Interface}).Add(value)
 }
 
-func (r *DefaultRoute) IncPromMetric(vec *prometheus.GaugeVec) {
+func (r *DefaultRoute) incPromMetric(vec *prometheus.GaugeVec) {
 	vec.With(prometheus.Labels{"gateway": r.Gateway, "interface": r.Interface}).Inc()
 }
 
-func (r *DefaultRoute) SetPromMetricBool(vec *prometheus.GaugeVec, value bool) {
+func (r *DefaultRoute) setPromMetricBool(vec *prometheus.GaugeVec, value bool) {
 	if value {
-		r.SetPromMetric(vec, 1)
+		r.setPromMetric(vec, 1)
 	} else {
-		r.SetPromMetric(vec, 0)
+		r.setPromMetric(vec, 0)
 	}
+}
+
+func (r *DefaultRoute) UpdateExternalIp() {
+	// TODO update on schedule
+	ip, err := r.queryExternalIp()
+	if err != nil {
+		log.Errorf("Error getting external IP for %s: %v", r.Name(), err)
+		ip = ""
+	}
+	r.External = ip
+	coll.route_info.With(prometheus.Labels{
+		"gateway":   r.Gateway,
+		"interface": r.Interface,
+		"source":    r.Source,
+		"external":  ip,
+	}).Set(1)
+}
+
+func (r *DefaultRoute) queryExternalIp() (string, error) {
+	url := "http://icanhazip.com/"
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			DialContext: (&net.Dialer{
+				LocalAddr: &net.TCPAddr{IP: net.ParseIP(r.Source)},
+			}).DialContext,
+		},
+	}
+	resp, err := client.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return "", errors.New(resp.Status)
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(body)), nil
 }

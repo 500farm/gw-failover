@@ -5,6 +5,7 @@ import (
 )
 
 type Collector struct {
+	route_info             *prometheus.GaugeVec
 	route_up               *prometheus.GaugeVec
 	route_active           *prometheus.GaugeVec
 	route_metric           *prometheus.GaugeVec
@@ -18,6 +19,11 @@ var coll *Collector
 func newCollector() *Collector {
 	namespace := "gw_failover"
 	return &Collector{
+		route_info: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "route_info",
+			Help:      "Route info.",
+		}, []string{"gateway", "interface", "source", "external"}),
 		route_up: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: namespace,
 			Name:      "route_up",
@@ -52,6 +58,7 @@ func newCollector() *Collector {
 }
 
 func (e *Collector) Describe(ch chan<- *prometheus.Desc) {
+	e.route_info.Describe(ch)
 	e.route_up.Describe(ch)
 	e.route_active.Describe(ch)
 	e.route_metric.Describe(ch)
@@ -61,6 +68,7 @@ func (e *Collector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (e *Collector) Collect(ch chan<- prometheus.Metric) {
+	e.route_info.Collect(ch)
 	e.route_up.Collect(ch)
 	e.route_active.Collect(ch)
 	e.route_metric.Collect(ch)
