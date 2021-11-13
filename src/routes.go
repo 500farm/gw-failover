@@ -60,9 +60,11 @@ func readRoutes() (DefaultRoutes, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = result.read(true)
-	if err != nil {
-		return nil, err
+	if Config.Ipv6 {
+		err = result.read(true)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if len(result) == 0 {
 		return nil, errors.New("nothing to do")

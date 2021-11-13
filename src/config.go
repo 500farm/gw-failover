@@ -9,6 +9,7 @@ type ConfigType struct {
 	PingInterval        time.Duration
 	ReplyTimeout        time.Duration
 	DryRun              bool
+	Ipv6                bool
 }
 
 var Config = ConfigType{
@@ -18,4 +19,5 @@ var Config = ConfigType{
 	PingInterval:        time.Second,
 	ReplyTimeout:        5 * time.Second,
 	DryRun:              true,
+	Ipv6:                true,
 }
