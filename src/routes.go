@@ -1,7 +1,5 @@
 package main
 
-// FIXME IPv6 support
-
 import (
 	"encoding/json"
 	"errors"
@@ -18,10 +16,12 @@ import (
 type DefaultRoutes []*DefaultRoute
 
 type IpRouteResponse []struct {
-	Destination string `json:"dst"`
-	Interface   string `json:"dev"`
-	Gateway     string `json:"gateway"`
-	Metric      int    `json:"metric"`
+	Destination string        `json:"dst"`
+	Interface   string        `json:"dev"`
+	Gateway     string        `json:"gateway"`
+	Source      string        `json:"prefsrc"`
+	Metric      int           `json:"metric"`
+	Nexthops    []interface{} `json:"nexthops"`
 }
 
 func WatchLoop() error {
@@ -52,27 +52,52 @@ func WatchLoop() error {
 }
 
 func readRoutes() (DefaultRoutes, error) {
-	cmd := exec.Command("ip", "-j", "route", "list")
-	stdout, err := cmd.Output()
+	var result DefaultRoutes
+	err := result.read(false)
 	if err != nil {
 		return nil, err
+	}
+	err = result.read(true)
+	if err != nil {
+		return nil, err
+	}
+	if len(result) == 0 {
+		return nil, errors.New("Nothing to do")
+	}
+	sort.Slice(result, func(i int, j int) bool {
+		return result[i].Metric < result[j].Metric
+	})
+	return result, nil
+}
+
+func (rs *DefaultRoutes) read(ipv6 bool) error {
+	var cmd *exec.Cmd
+	if ipv6 {
+		cmd = exec.Command("ip", "-j", "-6", "route", "list")
+	} else {
+		cmd = exec.Command("ip", "-j", "route", "list")
 	}
 	var routes IpRouteResponse
+	stdout, err := cmd.Output()
+	if err != nil {
+		return err
+	}
 	err = json.Unmarshal(stdout, &routes)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	var result DefaultRoutes
+	c := 0
+	result := DefaultRoutes{}
 	for _, route := range routes {
 		if route.Destination == "default" {
-			source, err := sourceAddr(route.Interface, net.ParseIP(route.Gateway))
-			if err != nil {
-				return nil, err
+			if route.Interface == "" || route.Gateway == "" {
+				// p2p, multipath routes etc.
+				return fmt.Errorf("unsupported route %v", route)
 			}
 			t := DefaultRoute{
 				Interface: route.Interface,
 				Gateway:   route.Gateway,
-				Source:    source.String(),
+				Source:    route.Source,
 				Metric:    route.Metric,
 				Active:    true,
 			}
@@ -80,13 +105,29 @@ func readRoutes() (DefaultRoutes, error) {
 				t.Metric -= Config.InactiveRouteMetric
 				t.Active = false
 			}
+			if t.Source == "" {
+				source, err := sourceAddr(t.Interface, net.ParseIP(t.Gateway))
+				if err != nil {
+					return err
+				}
+				if source != nil {
+					t.Source = source.String()
+				}
+			}
 			result = append(result, &t)
+			c++
 		}
 	}
-	sort.Slice(routes, func(i int, j int) bool {
-		return routes[i].Metric < routes[j].Metric
-	})
-	return result, nil
+	if c >= 2 || Config.DryRun {
+		*rs = append(*rs, result...)
+	} else {
+		proto := "IPv4"
+		if ipv6 {
+			proto = "IPv6"
+		}
+		log.Warnf("No redundant %s routes found: %v", proto, result.String())
+	}
+	return nil
 }
 
 func (rs *DefaultRoutes) startPingingAll() error {
@@ -127,14 +168,17 @@ func sourceAddr(ifname string, gw net.IP) (net.IP, error) {
 	}
 	for _, addr := range addrs {
 		ip, subnet, _ := net.ParseCIDR(addr.String())
-		if ip.To4() != nil && ip.IsGlobalUnicast() && subnet.Contains(gw) {
+		if ip.IsGlobalUnicast() && subnet.Contains(gw) {
 			return ip, nil
+		}
+		if ip.IsLinkLocalUnicast() {
+			return nil, nil
 		}
 	}
 	return nil, fmt.Errorf("no usable source address found for %s", ifname)
 }
 
 func (r *DefaultRoutes) String() string {
-	j, _ := json.Marshal(*r)
+	j, _ := json.MarshalIndent(*r, "", "    ")
 	return string(j)
 }

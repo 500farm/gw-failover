@@ -56,10 +56,12 @@ func (r *DefaultRoute) Check() bool {
 		return false
 	}
 	stats := r.counter.Stats(Config.ReplyTimeout)
-	log.Infof(
-		"%s: since last reply %v, down time %v, up time %v",
-		r.Name(), stats.waitTime, stats.downTime, stats.upTime,
-	)
+	if Config.DryRun {
+		log.Infof(
+			"%s: since last reply %v, down time %v, up time %v",
+			r.Name(), stats.waitTime, stats.downTime, stats.upTime,
+		)
+	}
 	if r.Active && stats.downTime >= Config.DeactivateThreshold {
 		log.Warnf("Gateway %s is now DOWN after %v of no reply", r.Name(), stats.downTime)
 		r.deactivate()
@@ -95,12 +97,16 @@ func (r *DefaultRoute) applyMetric(metric int) error {
 	if Config.DryRun {
 		return nil
 	}
-	cmd := exec.Command("ip", "route", "delete", "default", "via", r.Gateway, "dev", r.Interface)
+	cmd := exec.Command(
+		"ip", "route", "delete", "default", "via", r.Gateway, "dev", r.Interface
+	)
 	_, err := cmd.Output()
 	if err != nil {
 		log.Error(err)
 	}
-	cmd = exec.Command("ip", "route", "add", "default", "via", r.Gateway, "dev", r.Interface, "metric", strconv.Itoa(metric))
+	cmd = exec.Command(
+		"ip", "route", "add", "default", "via", r.Gateway, "dev", r.Interface, "metric", strconv.Itoa(metric), "proto", "static"
+	)
 	_, err = cmd.Output()
 	return err
 }
