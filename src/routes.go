@@ -174,10 +174,11 @@ func sourceAddr(ifname string, gw net.IP) (net.IP, error) {
 	if err != nil {
 		return nil, err
 	}
+	ipv6 := gw.To4() == nil
 	for _, addr := range addrs {
-		ip, subnet, _ := net.ParseCIDR(addr.String())
-		if ip.IsGlobalUnicast() && subnet.Contains(gw) ||
-			ip.IsLinkLocalUnicast() && gw.IsLinkLocalUnicast() {
+		ip, _, _ := net.ParseCIDR(addr.String())
+		if ip.IsGlobalUnicast() &&
+			(!ipv6 && ip.To4() != nil || ipv6 && ip.To4() == nil) {
 			return ip, nil
 		}
 	}
