@@ -98,7 +98,7 @@ func (r *DefaultRoute) applyMetric(metric int) error {
 		return nil
 	}
 	cmd := exec.Command(
-		"ip", "route", "delete", "default", "via", r.Gateway, "dev", r.Interface,
+		"ip", "route", "delete", "default", "via", r.Gateway, "dev", r.Interface, "proto", "static",
 	)
 	_, err := cmd.Output()
 	if err != nil {

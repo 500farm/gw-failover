@@ -15,14 +15,17 @@ import (
 
 type DefaultRoutes []*DefaultRoute
 
-type IpRouteResponse []struct {
+type IpRouteResponseItem struct {
 	Destination string        `json:"dst"`
 	Interface   string        `json:"dev"`
 	Gateway     string        `json:"gateway"`
 	Source      string        `json:"prefsrc"`
 	Metric      int           `json:"metric"`
+	Protocol    string        `json:"protocol"`
 	Nexthops    []interface{} `json:"nexthops"`
 }
+
+type IpRouteResponse []IpRouteResponseItem
 
 func WatchLoop() error {
 	user, err := user.Current()
@@ -62,7 +65,7 @@ func readRoutes() (DefaultRoutes, error) {
 		return nil, err
 	}
 	if len(result) == 0 {
-		return nil, errors.New("Nothing to do")
+		return nil, errors.New("nothing to do")
 	}
 	sort.Slice(result, func(i int, j int) bool {
 		return result[i].Metric < result[j].Metric
@@ -73,9 +76,9 @@ func readRoutes() (DefaultRoutes, error) {
 func (rs *DefaultRoutes) read(ipv6 bool) error {
 	var cmd *exec.Cmd
 	if ipv6 {
-		cmd = exec.Command("ip", "-j", "-6", "route", "list")
+		cmd = exec.Command("ip", "-j", "-6", "route", "list", "default")
 	} else {
-		cmd = exec.Command("ip", "-j", "route", "list")
+		cmd = exec.Command("ip", "-j", "route", "list", "default")
 	}
 	var routes IpRouteResponse
 	stdout, err := cmd.Output()
@@ -89,34 +92,36 @@ func (rs *DefaultRoutes) read(ipv6 bool) error {
 	c := 0
 	result := DefaultRoutes{}
 	for _, route := range routes {
-		if route.Destination == "default" {
-			if route.Interface == "" || route.Gateway == "" {
-				// p2p, multipath routes etc.
-				return fmt.Errorf("unsupported route %v", route)
-			}
-			t := DefaultRoute{
-				Interface: route.Interface,
-				Gateway:   route.Gateway,
-				Source:    route.Source,
-				Metric:    route.Metric,
-				Active:    true,
-			}
-			if t.Metric >= Config.InactiveRouteMetric {
-				t.Metric -= Config.InactiveRouteMetric
-				t.Active = false
-			}
-			if t.Source == "" {
-				source, err := sourceAddr(t.Interface, net.ParseIP(t.Gateway))
-				if err != nil {
-					return err
-				}
-				if source != nil {
-					t.Source = source.String()
-				}
-			}
-			result = append(result, &t)
-			c++
+		if route.Interface == "" || route.Gateway == "" {
+			// p2p, multipath routes etc.
+			return fmt.Errorf("unsupported route: %s", route.String())
 		}
+		if route.Protocol != "static" && !Config.DryRun {
+			// dhcp/ra routes etc.
+			return fmt.Errorf("non-static route can not be used: %s", route.String())
+		}
+		t := DefaultRoute{
+			Interface: route.Interface,
+			Gateway:   route.Gateway,
+			Source:    route.Source,
+			Metric:    route.Metric,
+			Active:    true,
+		}
+		if t.Metric >= Config.InactiveRouteMetric {
+			t.Metric -= Config.InactiveRouteMetric
+			t.Active = false
+		}
+		if t.Source == "" {
+			source, err := sourceAddr(t.Interface, net.ParseIP(t.Gateway))
+			if err != nil {
+				return err
+			}
+			if source != nil {
+				t.Source = source.String()
+			}
+		}
+		result = append(result, &t)
+		c++
 	}
 	if c >= 2 || Config.DryRun {
 		*rs = append(*rs, result...)
@@ -179,6 +184,11 @@ func sourceAddr(ifname string, gw net.IP) (net.IP, error) {
 }
 
 func (r *DefaultRoutes) String() string {
+	j, _ := json.MarshalIndent(*r, "", "    ")
+	return string(j)
+}
+
+func (r *IpRouteResponseItem) String() string {
 	j, _ := json.MarshalIndent(*r, "", "    ")
 	return string(j)
 }
