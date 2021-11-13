@@ -1,8 +1,10 @@
 package main
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
-// FIXME synchronization
 type PingCounter struct {
 	lifeTime       time.Duration
 	maxExpectedRtt time.Duration
@@ -10,6 +12,7 @@ type PingCounter struct {
 	upSince        time.Time
 	lastRequest    time.Time
 	lastReply      time.Time
+	lock           sync.Mutex
 }
 
 type PingCounterStats struct {
@@ -27,14 +30,23 @@ func NewPingCounter(lifeTime time.Duration) *PingCounter {
 }
 
 func (c *PingCounter) AddRequest() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	c.lastRequest = time.Now()
 }
 
 func (c *PingCounter) AddReply() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	c.lastReply = time.Now()
 }
 
 func (c *PingCounter) Stats(replyTimeout time.Duration) PingCounterStats {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	dt, ut := c.downUpTimes(replyTimeout)
 	return PingCounterStats{
 		waitTime: c.waitTime().Truncate(time.Millisecond),
