@@ -176,11 +176,9 @@ func sourceAddr(ifname string, gw net.IP) (net.IP, error) {
 	}
 	for _, addr := range addrs {
 		ip, subnet, _ := net.ParseCIDR(addr.String())
-		if ip.IsGlobalUnicast() && subnet.Contains(gw) {
+		if ip.IsGlobalUnicast() && subnet.Contains(gw) ||
+			ip.IsLinkLocalUnicast() && gw.IsLinkLocalUnicast() {
 			return ip, nil
-		}
-		if ip.IsLinkLocalUnicast() {
-			return nil, nil
 		}
 	}
 	return nil, fmt.Errorf("no usable source address found for %s", ifname)
