@@ -29,25 +29,25 @@ func WatchLoop() error {
 		return errors.New("please run under root")
 	}
 
-	rs, err := ReadRoutes()
+	rs, err := readRoutes()
 	if err != nil {
 		return err
 	}
 	log.Info(rs.String())
 
-	err = rs.StartPingingAll()
+	err = rs.startPingingAll()
 	if err != nil {
 		return err
 	}
 	for {
 		time.Sleep(time.Second)
-		if rs.CheckAll() {
+		if rs.checkAll() {
 			log.Info(rs.String())
 		}
 	}
 }
 
-func ReadRoutes() (DefaultRoutes, error) {
+func readRoutes() (DefaultRoutes, error) {
 	cmd := exec.Command("ip", "-j", "route", "list")
 	stdout, err := cmd.Output()
 	if err != nil {
@@ -67,8 +67,8 @@ func ReadRoutes() (DefaultRoutes, error) {
 				Metric:    route.Metric,
 				Active:    true,
 			}
-			if t.Metric >= InactiveRouteMetric {
-				t.Metric -= InactiveRouteMetric
+			if t.Metric >= Config.InactiveRouteMetric {
+				t.Metric -= Config.InactiveRouteMetric
 				t.Active = false
 			}
 			result = append(result, &t)
@@ -80,24 +80,24 @@ func ReadRoutes() (DefaultRoutes, error) {
 	return result, nil
 }
 
-func (rs *DefaultRoutes) StartPingingAll() error {
+func (rs *DefaultRoutes) startPingingAll() error {
 	for _, r := range *rs {
 		err := r.StartPinging()
 		if err != nil {
-			rs.StopPingingAll()
+			rs.stopPingingAll()
 			return err
 		}
 	}
 	return nil
 }
 
-func (rs *DefaultRoutes) StopPingingAll() {
+func (rs *DefaultRoutes) stopPingingAll() {
 	for _, r := range *rs {
 		r.StopPinging()
 	}
 }
 
-func (rs *DefaultRoutes) CheckAll() bool {
+func (rs *DefaultRoutes) checkAll() bool {
 	changed := false
 	for _, r := range *rs {
 		if r.Check() {

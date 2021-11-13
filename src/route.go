@@ -24,7 +24,7 @@ func (r *DefaultRoute) StartPinging() error {
 		if err != nil {
 			return err
 		}
-		pinger.Interval = PingInterval
+		pinger.Interval = Config.PingInterval
 		pinger.RecordRtts = false
 		pinger.SetPrivileged(true)
 		pinger.OnSend = func(packet *ping.Packet) {
@@ -35,7 +35,7 @@ func (r *DefaultRoute) StartPinging() error {
 			// log.Infof("%s: ping reply", r.Name())
 		}
 		r.pinger = pinger
-		r.counter = NewPingCounter(UpThreshold)
+		r.counter = NewPingCounter(Config.ActivateThreshold)
 	}
 	go r.pinger.Run()
 	return nil
@@ -53,44 +53,44 @@ func (r *DefaultRoute) Check() bool {
 	if r.counter == nil {
 		return false
 	}
-	stats := r.counter.Stats(PingInterval)
+	stats := r.counter.Stats(Config.ReplyTimeout)
 	log.Infof(
-		"%s: down time %v, up time %v, reply ratio %.2f",
-		r.Name(), stats.downTime, stats.upTime, stats.replyRatio,
+		"%s: since last reply %v, down time %v, up time %v",
+		r.Name(), stats.waitTime, stats.downTime, stats.upTime,
 	)
-	if r.Active && stats.downTime >= DownThreshold {
+	if r.Active && stats.downTime >= Config.DeactivateThreshold {
 		log.Warnf("Gateway %s is now DOWN after %v of no reply", r.Name(), stats.downTime)
-		r.Deactivate()
+		r.deactivate()
 		return true
 	}
-	if !r.Active && stats.upTime >= UpThreshold && stats.replyRatio >= AcceptableReplyRatio {
-		log.Warnf("Gateway %s is now UP after %v with reply ratio %.2f", r.Name(), stats.upTime, stats.replyRatio)
-		r.Activate()
+	if !r.Active && stats.upTime >= Config.ActivateThreshold {
+		log.Warnf("Gateway %s is now UP after %v", r.Name(), stats.upTime)
+		r.activate()
 		return true
 	}
 	return false
 }
 
-func (r *DefaultRoute) Activate() {
+func (r *DefaultRoute) activate() {
 	r.Active = true
-	err := r.ApplyMetric(r.Metric)
+	err := r.applyMetric(r.Metric)
 	if err != nil {
 		log.Error(err)
 	}
 }
 
-func (r *DefaultRoute) Deactivate() {
+func (r *DefaultRoute) deactivate() {
 	r.Active = false
-	err := r.ApplyMetric(r.Metric + InactiveRouteMetric)
+	err := r.applyMetric(r.Metric + Config.InactiveRouteMetric)
 	if err != nil {
 		log.Error(err)
 		return
 	}
-	r.ResetConnections()
+	r.resetConnections()
 }
 
-func (r *DefaultRoute) ApplyMetric(metric int) error {
-	if DryRun {
+func (r *DefaultRoute) applyMetric(metric int) error {
+	if Config.DryRun {
 		return nil
 	}
 	cmd := exec.Command("ip", "route", "delete", "default", "via", r.Gateway, "dev", r.Interface)
@@ -103,8 +103,8 @@ func (r *DefaultRoute) ApplyMetric(metric int) error {
 	return err
 }
 
-func (r *DefaultRoute) ResetConnections() {
-	if DryRun {
+func (r *DefaultRoute) resetConnections() {
+	if Config.DryRun {
 		return
 	}
 	// FIXME
