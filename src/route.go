@@ -172,19 +172,22 @@ func (r *DefaultRoute) setPromMetricBool(vec *prometheus.GaugeVec, value bool) {
 }
 
 func (r *DefaultRoute) UpdateExternalIp() {
-	// TODO update on schedule
 	ip, err := r.queryExternalIp()
 	if err != nil {
 		log.Errorf("Error getting external IP for %s: %v", r.Name(), err)
-		ip = ""
+	} else {
+		r.External = ip
 	}
-	r.External = ip
 	coll.route_info.With(prometheus.Labels{
 		"gateway":   r.Gateway,
 		"interface": r.Interface,
 		"source":    r.Source,
-		"external":  ip,
+		"external":  r.External,
 	}).Set(1)
+	go func() {
+		time.Sleep(5 * time.Minute)
+		r.UpdateExternalIp()
+	}()
 }
 
 func (r *DefaultRoute) queryExternalIp() (string, error) {
