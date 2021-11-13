@@ -40,7 +40,7 @@ func WatchLoop() error {
 	if err != nil {
 		return err
 	}
-	log.Info(rs.String())
+	log.Infof("Routes: %s", rs.String())
 
 	err = rs.startPingingAll()
 	if err != nil {
@@ -49,7 +49,7 @@ func WatchLoop() error {
 	for {
 		time.Sleep(time.Second)
 		if rs.checkAll() {
-			log.Info(rs.String())
+			log.Infof("Routes: %s", rs.String())
 		}
 	}
 }
