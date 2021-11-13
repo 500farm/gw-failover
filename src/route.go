@@ -12,6 +12,7 @@ import (
 type DefaultRoute struct {
 	Interface string
 	Gateway   string
+	Source    string
 	Active    bool
 	Metric    int
 	pinger    *ping.Pinger
@@ -27,6 +28,7 @@ func (r *DefaultRoute) StartPinging() error {
 		pinger.Interval = Config.PingInterval
 		pinger.RecordRtts = false
 		pinger.SetPrivileged(true)
+		pinger.Source = r.Source
 		pinger.OnSend = func(packet *ping.Packet) {
 			r.counter.AddRequest()
 		}

@@ -1,8 +1,12 @@
 package main
 
+// FIXME IPv6 support
+
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net"
 	"os/exec"
 	"os/user"
 	"sort"
@@ -61,9 +65,14 @@ func readRoutes() (DefaultRoutes, error) {
 	var result DefaultRoutes
 	for _, route := range routes {
 		if route.Destination == "default" {
+			source, err := sourceAddr(route.Interface, net.ParseIP(route.Gateway))
+			if err != nil {
+				return nil, err
+			}
 			t := DefaultRoute{
 				Interface: route.Interface,
 				Gateway:   route.Gateway,
+				Source:    source.String(),
 				Metric:    route.Metric,
 				Active:    true,
 			}
@@ -105,6 +114,24 @@ func (rs *DefaultRoutes) checkAll() bool {
 		}
 	}
 	return changed
+}
+
+func sourceAddr(ifname string, gw net.IP) (net.IP, error) {
+	intf, err := net.InterfaceByName(ifname)
+	if err != nil {
+		return nil, err
+	}
+	addrs, err := intf.Addrs()
+	if err != nil {
+		return nil, err
+	}
+	for _, addr := range addrs {
+		ip, subnet, _ := net.ParseCIDR(addr.String())
+		if ip.To4() != nil && ip.IsGlobalUnicast() && subnet.Contains(gw) {
+			return ip, nil
+		}
+	}
+	return nil, fmt.Errorf("no usable source address found for %s", ifname)
 }
 
 func (r *DefaultRoutes) String() string {
