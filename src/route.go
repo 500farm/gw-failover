@@ -98,14 +98,14 @@ func (r *DefaultRoute) applyMetric(metric int) error {
 		return nil
 	}
 	cmd := exec.Command(
-		"ip", "route", "delete", "default", "via", r.Gateway, "dev", r.Interface
+		"ip", "route", "delete", "default", "via", r.Gateway, "dev", r.Interface,
 	)
 	_, err := cmd.Output()
 	if err != nil {
 		log.Error(err)
 	}
 	cmd = exec.Command(
-		"ip", "route", "add", "default", "via", r.Gateway, "dev", r.Interface, "metric", strconv.Itoa(metric), "proto", "static"
+		"ip", "route", "add", "default", "via", r.Gateway, "dev", r.Interface, "metric", strconv.Itoa(metric), "proto", "static",
 	)
 	_, err = cmd.Output()
 	return err
