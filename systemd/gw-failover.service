@@ -4,7 +4,7 @@ Wants=network-online.target
 After=network-online.target
 
 [Service]
-ExecStart=/usr/local/bin/gw-failover
+ExecStart=/usr/local/bin/gw-failover --config-file=/usr/local/etc/gw-failover.yaml
 Restart=always
 
 [Install]
