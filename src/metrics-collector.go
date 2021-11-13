@@ -5,11 +5,12 @@ import (
 )
 
 type Collector struct {
-	route_up            *prometheus.GaugeVec
-	route_active        *prometheus.GaugeVec
-	route_metric        *prometheus.GaugeVec
-	ping_requests_total *prometheus.GaugeVec
-	ping_replies_total  *prometheus.GaugeVec
+	route_up               *prometheus.GaugeVec
+	route_active           *prometheus.GaugeVec
+	route_metric           *prometheus.GaugeVec
+	ping_requests_total    *prometheus.GaugeVec
+	ping_replies_total     *prometheus.GaugeVec
+	ping_rtt_total_seconds *prometheus.GaugeVec
 }
 
 var coll *Collector
@@ -42,6 +43,11 @@ func newCollector() *Collector {
 			Name:      "ping_replies_total",
 			Help:      "Counter of ping replies received from the gateway.",
 		}, []string{"gateway", "interface"}),
+		ping_rtt_total_seconds: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "ping_rtt_total_seconds",
+			Help:      "Counter of ping round-trip time (divide by ping_replies_total to get single packet avg rtt).",
+		}, []string{"gateway", "interface"}),
 	}
 }
 
@@ -51,6 +57,7 @@ func (e *Collector) Describe(ch chan<- *prometheus.Desc) {
 	e.route_metric.Describe(ch)
 	e.ping_requests_total.Describe(ch)
 	e.ping_replies_total.Describe(ch)
+	e.ping_rtt_total_seconds.Describe(ch)
 }
 
 func (e *Collector) Collect(ch chan<- prometheus.Metric) {
@@ -59,4 +66,5 @@ func (e *Collector) Collect(ch chan<- prometheus.Metric) {
 	e.route_metric.Collect(ch)
 	e.ping_requests_total.Collect(ch)
 	e.ping_replies_total.Collect(ch)
+	e.ping_rtt_total_seconds.Collect(ch)
 }

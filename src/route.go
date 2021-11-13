@@ -37,6 +37,7 @@ func (r *DefaultRoute) StartPinging() error {
 		pinger.OnRecv = func(packet *ping.Packet) {
 			r.counter.AddReply()
 			r.IncPromMetric(coll.ping_replies_total)
+			r.AddToPromMetric(coll.ping_rtt_total_seconds, packet.Rtt.Seconds())
 		}
 		r.pinger = pinger
 		r.counter = NewPingCounter(Config.ActivateThreshold)
@@ -134,6 +135,7 @@ func (r *DefaultRoute) InitPromMetrics() {
 	r.SetPromMetricBool(coll.route_up, true)
 	r.SetPromMetric(coll.ping_requests_total, 0)
 	r.SetPromMetric(coll.ping_replies_total, 0)
+	r.SetPromMetric(coll.ping_rtt_total_seconds, 0)
 	r.UpdatePromMetrics()
 }
 
@@ -144,6 +146,10 @@ func (r *DefaultRoute) UpdatePromMetrics() {
 
 func (r *DefaultRoute) SetPromMetric(vec *prometheus.GaugeVec, value float64) {
 	vec.With(prometheus.Labels{"gateway": r.Gateway, "interface": r.Interface}).Set(value)
+}
+
+func (r *DefaultRoute) AddToPromMetric(vec *prometheus.GaugeVec, value float64) {
+	vec.With(prometheus.Labels{"gateway": r.Gateway, "interface": r.Interface}).Add(value)
 }
 
 func (r *DefaultRoute) IncPromMetric(vec *prometheus.GaugeVec) {
